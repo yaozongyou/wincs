@@ -1,14 +1,12 @@
+use std::io::BufReader;
 use std::{
     fs::{self, File},
-    io::{BufWriter, Read, Seek, SeekFrom, Write},
+    io::{BufWriter, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::mpsc,
-    thread,
-    time::Duration,
 };
-
+use std::io::Read;
 use rkyv::{rancor::Error as RkyvError, with::AsString, Archive, Deserialize, Serialize};
-use wfd::DialogParams;
 use widestring::U16String;
 use wincs::{
     info, ticket, HydrationType, PlaceholderFile, PopulationType, Registration, Request,
@@ -16,12 +14,9 @@ use wincs::{
 };
 
 // MUST be a multiple of 4096
-const CHUNK_SIZE_BYTES: usize = 4096;
+const CHUNK_SIZE_BYTES: usize = 1024*1024;
 // const CHUNK_DELAY_MS: u64 = 250;
 const CHUNK_DELAY_MS: u64 = 0;
-
-const SERVER_PATH: Option<&str> = Some("D:\\test_server_2");
-const CLIENT_PATH: Option<&str> = Some("D:\\test_client_2");
 
 const PROVIDER_NAME: &str = "TestStorageProvider";
 const ACCOUNT_NAME: &str = "TestAccount1";
@@ -29,33 +24,8 @@ const DISPLAY_NAME: &str = "TestStorageProviderDisplayName";
 const VERSION: &str = "1.0.0";
 
 fn main() {
-    let server_path = SERVER_PATH
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .unwrap_or_else(|| {
-            wfd::open_dialog(DialogParams {
-                file_name_label: "Server Folder",
-                title: "Select Server Directory",
-                options: wfd::FOS_PICKFOLDERS,
-                ..Default::default()
-            })
-            .unwrap()
-            .selected_file_path
-        });
-
-    let client_path = CLIENT_PATH
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .unwrap_or_else(|| {
-            wfd::open_dialog(DialogParams {
-                file_name_label: "Client Folder",
-                title: "Select Client Directory",
-                options: wfd::FOS_PICKFOLDERS,
-                ..Default::default()
-            })
-            .unwrap()
-            .selected_file_path
-        });
+    let client_path = Path::new("D:\\test_client_2");
+    let server_path = Path::new("D:\\test_server_2");
 
     let sync_root_id = SyncRootIdBuilder::new(PROVIDER_NAME.into())
         .account_name(ACCOUNT_NAME.into())
@@ -90,8 +60,8 @@ fn main() {
         .connect(
             &client_path,
             Filter {
-                client_path: client_path.clone(),
-                server_path: server_path.clone(),
+                client_path: client_path.to_path_buf(),
+                server_path: server_path.to_path_buf(),
             },
         )
         .unwrap();
@@ -171,6 +141,10 @@ struct Filter {
 
 impl SyncFilter for Filter {
     fn fetch_data(&self, request: Request, _ticket: ticket::FetchData, info: info::FetchData) {
+        println!("Fetching data for {}", request.path().display());
+        println!("request: {:?}", request);
+        println!("Required range: {:?}", info.required_file_range());
+
         let blob = request.file_blob();
         // convert the blob back to a path
         let archived = rkyv::access::<ArchivedFileBlob, RkyvError>(blob).unwrap();
@@ -198,8 +172,14 @@ impl SyncFilter for Filter {
         server_file.seek(SeekFrom::Start(position)).unwrap();
         client_file.seek(SeekFrom::Start(position)).unwrap();
 
+        let mut server_reader = BufReader::with_capacity(409600, server_file);
+
         // reuse the buffer to avoid allocations
-        let mut buffer = [0; CHUNK_SIZE_BYTES];
+        //let mut buffer = [0; CHUNK_SIZE_BYTES];
+        let mut buffer = Vec::with_capacity(CHUNK_SIZE_BYTES);
+        buffer.resize(CHUNK_SIZE_BYTES, 0);
+
+        //std::io::copy(&mut server_reader, &mut client_file).expect("Failed to copy content");
 
         // TODO: if anything in here fails then just keep retrying like in the sample
         // TODO: create a less naive impl
@@ -210,8 +190,10 @@ impl SyncFilter for Filter {
 
             // TODO: read directly to the BufWriters buffer
             // TODO: ignore interrupted errors
-            let bytes_read = server_file.read(&mut buffer).unwrap();
+            let bytes_read = server_reader.read(&mut buffer).unwrap();
+            println!("Read {} bytes", bytes_read);
             let bytes_written = client_file.write(&buffer[0..bytes_read]).unwrap();
+            println!("Wrote {} bytes", bytes_written);
             position += bytes_written as u64;
 
             // if everything is downloaded then we're done
@@ -220,7 +202,7 @@ impl SyncFilter for Filter {
             }
 
             // simulate network latency
-            thread::sleep(Duration::from_millis(CHUNK_DELAY_MS))
+            //thread::sleep(Duration::from_millis(CHUNK_DELAY_MS))
         }
 
         // ensure any remaining data is written
