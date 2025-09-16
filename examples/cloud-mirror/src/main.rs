@@ -20,8 +20,8 @@ const CHUNK_SIZE_BYTES: usize = 4096;
 // const CHUNK_DELAY_MS: u64 = 250;
 const CHUNK_DELAY_MS: u64 = 0;
 
-const SERVER_PATH: Option<&str> = Some("C:\\Users\\nicky\\Music\\server");
-const CLIENT_PATH: Option<&str> = Some("C:\\Users\\nicky\\Music\\client");
+const SERVER_PATH: Option<&str> = Some("D:\\test_server_2");
+const CLIENT_PATH: Option<&str> = Some("D:\\test_client_2");
 
 const PROVIDER_NAME: &str = "TestStorageProvider";
 const ACCOUNT_NAME: &str = "TestAccount1";
