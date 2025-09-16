@@ -13,10 +13,7 @@ use wincs::{
     SecurityId, Session, SupportedAttributes, SyncFilter, SyncRootIdBuilder,
 };
 
-// MUST be a multiple of 4096
 const CHUNK_SIZE_BYTES: usize = 1024*1024;
-// const CHUNK_DELAY_MS: u64 = 250;
-const CHUNK_DELAY_MS: u64 = 0;
 
 const PROVIDER_NAME: &str = "TestStorageProvider";
 const ACCOUNT_NAME: &str = "TestAccount1";
@@ -52,13 +49,13 @@ fn main() {
         )
         .allow_hardlinks()
         .show_siblings_as_group()
-        .register(&client_path)
+        .register(client_path)
         .unwrap();
 
     // Connect to the sync root
     let provider = Session::new()
         .connect(
-            &client_path,
+            client_path,
             Filter {
                 client_path: client_path.to_path_buf(),
                 server_path: server_path.to_path_buf(),
@@ -66,7 +63,7 @@ fn main() {
         )
         .unwrap();
 
-    create_placeholders(&server_path, &client_path, Path::new(""));
+    create_placeholders(server_path, client_path, Path::new(""));
 
     // TODO: hydrate and dehydrate on pin/unpin
 
@@ -80,7 +77,7 @@ fn main() {
     sync_root_id.unregister().unwrap();
 
     // cleanup any placeholders whilst keeping the client folder intact
-    fs::read_dir(&client_path).unwrap().for_each(|entry| {
+    fs::read_dir(client_path).unwrap().for_each(|entry| {
         let entry = entry.unwrap();
         if entry.file_type().unwrap().is_dir() {
             fs::remove_dir_all(entry.path()).unwrap()
@@ -173,11 +170,7 @@ impl SyncFilter for Filter {
         client_file.seek(SeekFrom::Start(position)).unwrap();
 
         let mut server_reader = BufReader::with_capacity(409600, server_file);
-
-        // reuse the buffer to avoid allocations
-        //let mut buffer = [0; CHUNK_SIZE_BYTES];
-        let mut buffer = Vec::with_capacity(CHUNK_SIZE_BYTES);
-        buffer.resize(CHUNK_SIZE_BYTES, 0);
+        let mut buffer = vec![0; CHUNK_SIZE_BYTES];
 
         //std::io::copy(&mut server_reader, &mut client_file).expect("Failed to copy content");
 
